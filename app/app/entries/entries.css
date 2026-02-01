@@ -1,0 +1,107 @@
+@import "../dashboard.css";
+
+/* CONTROLS */
+.controls {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.controls input,
+.controls select {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  font-size: 14px;
+}
+
+.controls input {
+  flex: 1;
+}
+
+/* TABLE */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 14px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+td strong {
+  display: block;
+}
+
+.menu-cell {
+  position: relative;
+}
+
+/* TAGS */
+.tag {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.tag.received { background: #bbf7d0; }
+.tag.pending { background: #fde68a; }
+.tag.promised { background: #bfdbfe; }
+.tag.sent { background: #e5e7eb; }
+.tag.expense { background: #fed7aa; }
+
+/* STATUS */
+.status {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.status.received { background: #bbf7d0; }
+.status.pending { background: #fde68a; }
+.status.sent { background: #e5e7eb; }
+
+/* MENU */
+.dots {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: 28px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+  padding: 8px;
+  width: 160px;
+  z-index: 10;
+}
+
+.menu button {
+  width: 100%;
+  padding: 8px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu button:hover {
+  background: #f1f5f9;
+}
+
+.menu .danger {
+  color: #dc2626;
+}
+
+/* EMPTY */
+.empty-state {
+  text-align: center;
+  padding: 60px;
+  color: #64748b;
+}

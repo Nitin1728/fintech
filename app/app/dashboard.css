@@ -1,0 +1,221 @@
+.dashboard-root {
+  display: flex;
+  min-height: 100vh;
+  background: #f8fafc;
+  font-family: system-ui, sans-serif;
+}
+
+/* SIDEBAR */
+.sidebar {
+  width: 230px;
+  background: white;
+  border-right: 1px solid #e5e7eb;
+  padding: 24px;
+}
+
+.logo {
+  font-weight: 600;
+  font-size: 18px;
+  margin-bottom: 32px;
+}
+
+.sidebar nav a {
+  display: block;
+  padding: 10px 14px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  color: #475569;
+  text-decoration: none;
+}
+
+.sidebar nav a.active {
+  background: #2563eb;
+  color: white;
+}
+
+/* MAIN */
+.main {
+  flex: 1;
+  padding: 32px 48px;
+}
+
+/* TOP BAR */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+/* USER MENU */
+.user-menu {
+  position: relative;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.avatar {
+  background: #2563eb;
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+}
+
+/* DROPDOWN */
+.user-dropdown {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+  padding: 12px;
+  min-width: 200px;
+  display: none;
+  z-index: 10;
+}
+
+.user-menu:hover .user-dropdown {
+  display: block;
+}
+
+.user-dropdown span {
+  display: block;
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 10px;
+  word-break: break-all;
+}
+
+.user-dropdown button {
+  width: 100%;
+  background: none;
+  border: none;
+  color: #dc2626;
+  text-align: left;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+/* HEADER */
+.page-header h1 {
+  font-size: 26px;
+}
+
+.page-header p {
+  color: #64748b;
+  margin-bottom: 24px;
+}
+
+/* STATS */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.stat {
+  background: white;
+  padding: 20px;
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+}
+
+.stat h4 {
+  font-size: 22px;
+}
+
+.stat p {
+  color: #64748b;
+}
+
+.stat.green h4 { color: #16a34a; }
+.stat.orange h4 { color: #ea580c; }
+
+/* CARD */
+.card {
+  background: white;
+  padding: 20px;
+  border-radius: 14px;
+  margin-bottom: 28px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+}
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.btn {
+  background: #2563eb;
+  color: white;
+  padding: 8px 14px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+/* TABLE */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.tag {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #fde68a;
+}
+
+.tag.received {
+  background: #bbf7d0;
+}
+
+.status {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.status.pending {
+  background: #fde68a;
+}
+
+.status.received {
+  background: #bbf7d0;
+}
+
+.range-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.range-tabs button {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.range-tabs button:hover {
+  background: #2563eb;
+  color: white;
+}

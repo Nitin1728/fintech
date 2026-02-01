@@ -1,0 +1,133 @@
+.auth-root {
+  min-height: 100vh;
+  background: radial-gradient(#f8fafc, #eef2ff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: system-ui, sans-serif;
+}
+
+.auth-card {
+  width: 1000px;
+  min-height: 520px;   /* 👈 key change */
+  background: white;
+  border-radius: 18px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  box-shadow: 0 40px 80px rgba(0,0,0,0.15);
+}
+
+
+/* LEFT */
+.auth-left {
+  padding: 56px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 48px;
+}
+
+.brand-name {
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.auth-left h1 {
+  font-size: 34px;
+  line-height: 1.25;
+  margin-bottom: 16px;
+}
+
+.auth-left p {
+  color: #475569;
+  font-size: 16px;
+}
+
+/* RIGHT */
+.auth-right {
+  padding: 56px;
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-right h2 {
+  font-size: 26px;
+  margin-bottom: 6px;
+}
+
+.subtitle {
+  color: #475569;
+  margin-bottom: 32px;
+}
+
+label {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e5e7eb;
+  padding: 12px 14px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+}
+
+.input-wrap input {
+  border: none;
+  outline: none;
+  width: 100%;
+  font-size: 14px;
+}
+
+.password-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.forgot {
+  font-size: 13px;
+  color: #2563eb;
+  cursor: pointer;
+}
+
+.forgot-row {
+  text-align:left;
+  margin-top: -8px;
+  margin-bottom: 16px;
+}
+
+
+.btn-primary.full {
+  width: 100%;
+  margin-top: 10px;
+  padding: 14px;
+  font-size: 15px;
+}
+
+.signup {
+  text-align: center;
+  margin-top: 18px;
+  font-size: 14px;
+}
+
+.signup a {
+  color: #2563eb;
+  font-weight: 500;
+}
+
+.secure {
+  text-align: center;
+  margin-top: auto;
+  font-size: 13px;
+  color: #475569;
+}
