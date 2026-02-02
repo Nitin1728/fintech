@@ -106,53 +106,68 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
   /* ---------------- DATA LOAD ---------------- */
 
   const fetchData = useCallback(async (userId: string) => {
-    const { data, error } = await supabase
-      .from("entries")
-      .select("*")
-      .eq("user_id", userId)
-      .order("date", { ascending: false });
+    const [entriesRes, profileRes] = await Promise.all([
+      supabase
+        .from("entries")
+        .select("*")
+        .eq("user_id", userId)
+        .order("date", { ascending: false }),
+      supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
+    ]);
 
-    if (error) {
-      console.error("Fetch entries failed:", error);
-      return;
+    if (entriesRes.data) {
+      setEntries(entriesRes.data.map(mapEntryFromDB));
     }
 
-    setEntries(data.map(mapEntryFromDB));
+    if (profileRes.data) {
+      const p = profileRes.data;
+      setUser((prev) => ({
+        ...prev,
+        id: userId,
+        name: p.name ?? prev.name,
+        avatar: p.avatar ?? prev.avatar,
+        plan: p.plan ?? prev.plan,
+        billingCycle: p.billing_cycle ?? prev.billingCycle,
+        receivingAccounts: p.receiving_accounts ?? [],
+        paymentMethods: p.payment_methods ?? [],
+        email: prev.email,
+      }));
+      if (p.currency) setCurrencyState(p.currency);
+    }
   }, []);
 
-  /* ---------------- AUTH BOOTSTRAP ---------------- */
+  /* ---------------- AUTH ---------------- */
 
   useEffect(() => {
     let mounted = true;
 
-    const bootstrap = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    const init = async () => {
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
 
       if (!mounted) return;
 
       if (session?.user) {
-        const u = session.user;
-        setUser((prev) => ({ ...prev, id: u.id, email: u.email || "" }));
-        await fetchData(u.id);
-      } else {
-        setUser(EMPTY_USER);
-        setEntries([]);
+        setUser((u) => ({
+          ...u,
+          id: session.user.id,
+          email: session.user.email || "",
+        }));
+        await fetchData(session.user.id);
       }
 
       setLoading(false);
     };
 
-    bootstrap();
+    init();
 
     const { data: sub } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (_, session) => {
         if (!mounted) return;
 
         if (session?.user) {
-          setUser((prev) => ({
-            ...prev,
+          setUser((u) => ({
+            ...u,
             id: session.user.id,
             email: session.user.email || "",
           }));
@@ -170,7 +185,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [fetchData]);
 
-  /* ---------------- ACTIONS ---------------- */
+  /* ---------------- ENTRIES ---------------- */
 
   const addEntry = async (entry: Omit<FinanceEntry, "id">) => {
     if (!user.id) throw new Error("Not authenticated");
@@ -218,27 +233,40 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
       .eq("id", entry.id);
 
     if (error) throw error;
-
     await fetchData(user.id);
   };
 
   const deleteEntry = async (id: string) => {
-    const { error } = await supabase.from("entries").delete().eq("id", id);
-    if (error) throw error;
+    await supabase.from("entries").delete().eq("id", id);
     setEntries((prev) => prev.filter((e) => e.id !== id));
   };
 
   const markAsCompleted = async (id: string) => {
-    const { error } = await supabase
-      .from("entries")
-      .update({ status: "completed" })
-      .eq("id", id);
-
-    if (error) throw error;
+    await supabase.from("entries").update({ status: "completed" }).eq("id", id);
     await fetchData(user.id);
   };
 
-  /* ---------------- PREFS ---------------- */
+  /* ---------------- PROFILE ---------------- */
+
+  const updateUser = async (updates: Partial<User>) => {
+    if (!user.id) return;
+
+    const payload: any = {};
+    if (updates.name !== undefined) payload.name = updates.name;
+    if (updates.avatar !== undefined) payload.avatar = updates.avatar;
+    if (updates.receivingAccounts !== undefined)
+      payload.receiving_accounts = updates.receivingAccounts;
+    if (updates.paymentMethods !== undefined)
+      payload.payment_methods = updates.paymentMethods;
+
+    const { error } = await supabase
+      .from("profiles")
+      .upsert({ id: user.id, ...payload });
+
+    if (error) throw error;
+
+    setUser((prev) => ({ ...prev, ...updates }));
+  };
 
   const setCurrency = async (code: CurrencyCode) => {
     setCurrencyState(code);
@@ -247,14 +275,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const updateUser = async (updates: Partial<User>) => {
-    setUser((prev) => ({ ...prev, ...updates }));
-  };
-
   const formatAmount = (amount: number) =>
     `${CURRENCIES[currency].symbol}${amount.toFixed(2)}`;
 
-  /* ---------------- CONTEXT VALUE ---------------- */
+  /* ---------------- CONTEXT ---------------- */
 
   const value = useMemo(
     () => ({
