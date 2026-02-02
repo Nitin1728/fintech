@@ -40,7 +40,7 @@ interface FinanceContextType {
   setCurrency: (code: CurrencyCode) => Promise<void>;
   updateUser: (updates: Partial<User>) => Promise<void>;
   formatAmount: (amount: number) => string;
-  addEntry: (entry: Omit<FinanceEntry, "id">) => Promise<void>;
+  addEntry: (entry: Omit<FinanceEntry, "id" | "status">) => Promise<void>;
   updateEntry: (entry: FinanceEntry) => Promise<void>;
   deleteEntry: (id: string) => Promise<void>;
   getEntry: (id: string) => FinanceEntry | undefined;
@@ -52,37 +52,35 @@ interface FinanceContextType {
 
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
 
-/* ================= 🔑 ENTRY TYPE NORMALIZATION ================= */
-/* THIS IS THE CORE FIX */
+/* ======================================================
+   🔑 CANONICAL ENTRY ↔ DB MAPPING (NO STRINGS EVER)
+   ====================================================== */
 
-const entryToDB = (rawType: EntryType) => {
-  const type = rawType.toLowerCase();
+const entryToDB = (type: EntryType) => {
+  switch (type) {
+    case EntryType.PendingIn:
+      return { type: "income", status: "pending_in" };
 
-  if (type.includes("pending") && type.includes("in")) {
-    return { type: "income", status: "pending" };
+    case EntryType.PendingOut:
+      return { type: "expense", status: "pending_out" };
+
+    case EntryType.Received:
+      return { type: "income", status: "completed" };
+
+    case EntryType.Sent:
+      return { type: "expense", status: "completed" };
+
+    default:
+      throw new Error("Invalid EntryType");
   }
-
-  if (type.includes("pending") && type.includes("out")) {
-    return { type: "expense", status: "pending" };
-  }
-
-  if (type === "received") {
-    return { type: "income", status: "completed" };
-  }
-
-  if (type === "sent") {
-    return { type: "expense", status: "completed" };
-  }
-
-  throw new Error("Invalid entry type");
 };
 
 const dbToEntryType = (
   dbType: "income" | "expense",
-  status: "pending" | "completed"
+  status: "pending_in" | "pending_out" | "completed"
 ): EntryType => {
-  if (dbType === "income" && status === "pending") return EntryType.PendingIn;
-  if (dbType === "expense" && status === "pending") return EntryType.PendingOut;
+  if (dbType === "income" && status === "pending_in") return EntryType.PendingIn;
+  if (dbType === "expense" && status === "pending_out") return EntryType.PendingOut;
   if (dbType === "income") return EntryType.Received;
   return EntryType.Sent;
 };
@@ -107,7 +105,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
       id: db.id,
       name: db.name,
       amount: db.amount,
-      description: db.description,
+      description: db.description || "",
       date: db.date,
       type,
       status:
@@ -237,30 +235,48 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
 
   /* ---------------- ENTRY ACTIONS ---------------- */
 
-  const addEntry = async (entry: Omit<FinanceEntry, "id">) => {
-    if (!user.id) throw new Error("Not authenticated");
+  const addEntry = async (entry: Omit<FinanceEntry, "id" | "status">) => {
+    if (!user.id) throw new Error("User not authenticated");
 
     const db = entryToDB(entry.type);
+
+    if (
+      (db.status === "pending_in" || db.status === "pending_out") &&
+      !entry.dueDate
+    ) {
+      throw new Error("Due date is required for pending entries");
+    }
 
     const { error } = await supabase.from("entries").insert({
       user_id: user.id,
       name: entry.name,
       amount: entry.amount,
       date: entry.date,
-      description: entry.description,
+      description: entry.description || null,
       payment_mode: entry.paymentMode,
-      client_email: entry.clientEmail,
-      due_date: entry.dueDate,
+      client_email: entry.clientEmail || null,
+      due_date: entry.dueDate || null,
       type: db.type,
       status: db.status,
     });
 
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase insert error:", error);
+      throw error;
+    }
+
     await fetchData(user.id);
   };
 
   const updateEntry = async (entry: FinanceEntry) => {
     const db = entryToDB(entry.type);
+
+    if (
+      (db.status === "pending_in" || db.status === "pending_out") &&
+      !entry.dueDate
+    ) {
+      throw new Error("Due date is required for pending entries");
+    }
 
     const { error } = await supabase
       .from("entries")
@@ -270,14 +286,18 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
         date: entry.date,
         description: entry.description,
         payment_mode: entry.paymentMode,
-        client_email: entry.clientEmail,
-        due_date: entry.dueDate,
+        client_email: entry.clientEmail || null,
+        due_date: entry.dueDate || null,
         type: db.type,
         status: db.status,
       })
       .eq("id", entry.id);
 
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase update error:", error);
+      throw error;
+    }
+
     await fetchData(user.id);
   };
 
