@@ -35,7 +35,7 @@ interface FinanceContextType {
   entries: FinanceEntry[];
   currency: CurrencyCode;
   user: User;
-  loading: boolean; // ⬅️ true ONLY until auth is resolved once
+  loading: boolean;
   notifications: AppNotification[];
   setCurrency: (code: CurrencyCode) => Promise<void>;
   updateUser: (updates: Partial<User>) => Promise<void>;
@@ -61,7 +61,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
   const [currency, setCurrencyState] = useState<CurrencyCode>("USD");
   const [user, setUser] = useState<User>(EMPTY_USER);
   const [notifications] = useState<AppNotification[]>([]);
-  const [loading, setLoading] = useState(true); // ⬅️ AUTH BOOTSTRAP ONLY
+  const [loading, setLoading] = useState(true);
 
   /* ---------------- HELPERS ---------------- */
 
@@ -106,36 +106,21 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
   /* ---------------- DATA LOAD ---------------- */
 
   const fetchData = useCallback(async (userId: string) => {
-    const [entriesRes, profileRes] = await Promise.all([
-      supabase
-        .from("entries")
-        .select("*")
-        .eq("user_id", userId)
-        .order("date", { ascending: false }),
-      supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
-    ]);
+    const { data, error } = await supabase
+      .from("entries")
+      .select("*")
+      .eq("user_id", userId)
+      .order("date", { ascending: false });
 
-    if (entriesRes.data) {
-      setEntries(entriesRes.data.map(mapEntryFromDB));
+    if (error) {
+      console.error("Fetch entries failed:", error);
+      return;
     }
 
-    if (profileRes.data) {
-      const p = profileRes.data;
-      setUser((prev) => ({
-        ...prev,
-        id: userId,
-        name: p.name || prev.name,
-        avatar: p.avatar || prev.avatar,
-        plan: p.plan || prev.plan,
-        billingCycle: p.billing_cycle || prev.billingCycle,
-        receivingAccounts: p.receiving_accounts || [],
-        paymentMethods: p.payment_methods || [],
-      }));
-      if (p.currency) setCurrencyState(p.currency);
-    }
+    setEntries(data.map(mapEntryFromDB));
   }, []);
 
-  /* ---------------- AUTH BOOTSTRAP (ONCE) ---------------- */
+  /* ---------------- AUTH BOOTSTRAP ---------------- */
 
   useEffect(() => {
     let mounted = true;
@@ -156,22 +141,23 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
         setEntries([]);
       }
 
-      setLoading(false); // ✅ AUTH IS NOW FINAL
+      setLoading(false);
     };
 
     bootstrap();
 
     const { data: sub } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (_event, session) => {
         if (!mounted) return;
 
-        if (event === "SIGNED_IN" && session?.user) {
-          const u = session.user;
-          setUser((prev) => ({ ...prev, id: u.id, email: u.email || "" }));
-          fetchData(u.id); // background
-        }
-
-        if (event === "SIGNED_OUT") {
+        if (session?.user) {
+          setUser((prev) => ({
+            ...prev,
+            id: session.user.id,
+            email: session.user.email || "",
+          }));
+          fetchData(session.user.id);
+        } else {
           setUser(EMPTY_USER);
           setEntries([]);
         }
@@ -183,6 +169,74 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
       sub.subscription.unsubscribe();
     };
   }, [fetchData]);
+
+  /* ---------------- ACTIONS ---------------- */
+
+  const addEntry = async (entry: Omit<FinanceEntry, "id">) => {
+    if (!user.id) throw new Error("Not authenticated");
+
+    const { error } = await supabase.from("entries").insert({
+      user_id: user.id,
+      name: entry.name,
+      amount: entry.amount,
+      date: entry.date,
+      description: entry.description,
+      payment_mode: entry.paymentMode,
+      client_email: entry.clientEmail,
+      due_date: entry.dueDate,
+      type: mapTypeToDB(entry.type),
+      status:
+        entry.type === EntryType.PendingIn ||
+        entry.type === EntryType.PendingOut
+          ? "pending"
+          : "completed",
+    });
+
+    if (error) throw error;
+
+    await fetchData(user.id);
+  };
+
+  const updateEntry = async (entry: FinanceEntry) => {
+    const { error } = await supabase
+      .from("entries")
+      .update({
+        name: entry.name,
+        amount: entry.amount,
+        date: entry.date,
+        description: entry.description,
+        payment_mode: entry.paymentMode,
+        client_email: entry.clientEmail,
+        due_date: entry.dueDate,
+        type: mapTypeToDB(entry.type),
+        status:
+          entry.type === EntryType.PendingIn ||
+          entry.type === EntryType.PendingOut
+            ? "pending"
+            : "completed",
+      })
+      .eq("id", entry.id);
+
+    if (error) throw error;
+
+    await fetchData(user.id);
+  };
+
+  const deleteEntry = async (id: string) => {
+    const { error } = await supabase.from("entries").delete().eq("id", id);
+    if (error) throw error;
+    setEntries((prev) => prev.filter((e) => e.id !== id));
+  };
+
+  const markAsCompleted = async (id: string) => {
+    const { error } = await supabase
+      .from("entries")
+      .update({ status: "completed" })
+      .eq("id", id);
+
+    if (error) throw error;
+    await fetchData(user.id);
+  };
 
   /* ---------------- PREFS ---------------- */
 
@@ -212,11 +266,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
       setCurrency,
       updateUser,
       formatAmount,
-      addEntry: async () => {},
-      updateEntry: async () => {},
-      deleteEntry: async () => {},
+      addEntry,
+      updateEntry,
+      deleteEntry,
       getEntry: (id: string) => entries.find((e) => e.id === id),
-      markAsCompleted: async () => {},
+      markAsCompleted,
       markAllNotificationsRead: async () => {},
       upgradeToPro: () => {},
       deleteAccount: async () => {
