@@ -1,9 +1,9 @@
 import React, {
   createContext,
   useContext,
-  useState,
   useEffect,
   useMemo,
+  useState,
   useCallback,
 } from "react";
 import {
@@ -16,7 +16,7 @@ import {
 } from "../types";
 import { supabase } from "../src/lib/supabase";
 
-/* ---------------- DEFAULT USER ---------------- */
+/* ================= DEFAULT USER ================= */
 
 const EMPTY_USER: User = {
   id: "",
@@ -29,7 +29,7 @@ const EMPTY_USER: User = {
   paymentMethods: [],
 };
 
-/* ---------------- CONTEXT ---------------- */
+/* ================= CONTEXT ================= */
 
 interface FinanceContextType {
   entries: FinanceEntry[];
@@ -45,16 +45,12 @@ interface FinanceContextType {
   deleteEntry: (id: string) => Promise<void>;
   getEntry: (id: string) => FinanceEntry | undefined;
   markAsCompleted: (id: string) => Promise<void>;
-  markAllNotificationsRead: () => Promise<void>;
-  upgradeToPro: () => void;
   deleteAccount: () => Promise<void>;
 }
 
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
 
-/* ======================================================
-   🔑 CANONICAL ENTRY ↔ DB MAPPING (NO STRINGS EVER)
-   ====================================================== */
+/* ================= TYPE ↔ DB NORMALIZATION ================= */
 
 const entryToDB = (type: EntryType) => {
   switch (type) {
@@ -71,17 +67,17 @@ const entryToDB = (type: EntryType) => {
       return { type: "expense", status: "completed" };
 
     default:
-      throw new Error("Invalid EntryType");
+      throw new Error("Invalid entry type");
   }
 };
 
 const dbToEntryType = (
-  dbType: "income" | "expense",
-  status: "pending_in" | "pending_out" | "completed"
+  type: "income" | "expense",
+  status: "completed" | "pending_in" | "pending_out"
 ): EntryType => {
-  if (dbType === "income" && status === "pending_in") return EntryType.PendingIn;
-  if (dbType === "expense" && status === "pending_out") return EntryType.PendingOut;
-  if (dbType === "income") return EntryType.Received;
+  if (type === "income" && status === "pending_in") return EntryType.PendingIn;
+  if (type === "expense" && status === "pending_out") return EntryType.PendingOut;
+  if (type === "income") return EntryType.Received;
   return EntryType.Sent;
 };
 
@@ -96,7 +92,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
   const [notifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
 
-  /* ---------------- MAP DB ENTRY ---------------- */
+  /* ================= MAP DB ENTRY ================= */
 
   const mapEntryFromDB = (db: any): FinanceEntry => {
     const type = dbToEntryType(db.type, db.status);
@@ -113,62 +109,65 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
           ? "Pending"
           : "Completed",
       paymentMode: db.payment_mode,
-      clientEmail: db.client_email,
-      dueDate: db.due_date,
+      clientEmail: db.client_email || undefined,
+      dueDate: db.due_date || undefined,
     };
   };
 
-  /* ---------------- FETCH DATA ---------------- */
+  /* ================= FETCH DATA ================= */
 
   const fetchData = useCallback(async (userId: string) => {
-    const [entriesRes, profileRes] = await Promise.all([
-      supabase
-        .from("entries")
-        .select("*")
-        .eq("user_id", userId)
-        .order("date", { ascending: false }),
-      supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
-    ]);
+    const { data: entriesData, error } = await supabase
+      .from("entries")
+      .select("*")
+      .eq("user_id", userId)
+      .order("date", { ascending: false });
 
-    if (entriesRes.data) {
-      setEntries(entriesRes.data.map(mapEntryFromDB));
+    if (error) {
+      console.error("Fetch entries error:", error);
+      return;
     }
 
-    if (profileRes.data) {
-      const p = profileRes.data;
+    setEntries(entriesData.map(mapEntryFromDB));
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (profile) {
       setUser((prev) => ({
         ...prev,
-        id: userId,
-        name: p.name || prev.name,
-        avatar: p.avatar || prev.avatar,
-        plan: p.plan || prev.plan,
-        billingCycle: p.billing_cycle || prev.billingCycle,
-        receivingAccounts: p.receiving_accounts || [],
-        paymentMethods: p.payment_methods || [],
+        name: profile.name || prev.name,
+        avatar: profile.avatar || prev.avatar,
+        plan: profile.plan || prev.plan,
+        billingCycle: profile.billing_cycle || prev.billingCycle,
+        receivingAccounts: profile.receiving_accounts || [],
+        paymentMethods: profile.payment_methods || [],
       }));
-      if (p.currency) setCurrencyState(p.currency);
+
+      if (profile.currency) setCurrencyState(profile.currency);
     }
   }, []);
 
-  /* ---------------- AUTH BOOTSTRAP ---------------- */
+  /* ================= AUTH BOOTSTRAP ================= */
 
   useEffect(() => {
     let mounted = true;
 
     const bootstrap = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
+      const { data } = await supabase.auth.getSession();
       if (!mounted) return;
 
-      if (session?.user) {
-        setUser((prev) => ({
-          ...prev,
-          id: session.user.id,
-          email: session.user.email || "",
-        }));
-        await fetchData(session.user.id);
+      if (data.session?.user) {
+        const u = data.session.user;
+        setUser({
+          ...EMPTY_USER,
+          id: u.id,
+          email: u.email || "",
+        });
+        await fetchData(u.id);
       } else {
         setUser(EMPTY_USER);
         setEntries([]);
@@ -180,19 +179,17 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
     bootstrap();
 
     const { data: sub } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (_, session) => {
         if (!mounted) return;
 
-        if (event === "SIGNED_IN" && session?.user) {
-          setUser((prev) => ({
-            ...prev,
+        if (session?.user) {
+          setUser({
+            ...EMPTY_USER,
             id: session.user.id,
             email: session.user.email || "",
-          }));
-          fetchData(session.user.id);
-        }
-
-        if (event === "SIGNED_OUT") {
+          });
+          await fetchData(session.user.id);
+        } else {
           setUser(EMPTY_USER);
           setEntries([]);
         }
@@ -205,13 +202,16 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [fetchData]);
 
-  /* ---------------- USER PREFS ---------------- */
+  /* ================= USER PREFS ================= */
 
   const setCurrency = async (code: CurrencyCode) => {
     setCurrencyState(code);
-    if (user.id) {
-      await supabase.from("profiles").upsert({ id: user.id, currency: code });
-    }
+    if (!user.id) return;
+
+    await supabase.from("profiles").upsert({
+      id: user.id,
+      currency: code,
+    });
   };
 
   const updateUser = async (updates: Partial<User>) => {
@@ -233,19 +233,20 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
   const formatAmount = (amount: number) =>
     `${CURRENCIES[currency].symbol}${amount.toFixed(2)}`;
 
-  /* ---------------- ENTRY ACTIONS ---------------- */
+  /* ================= ENTRY ACTIONS ================= */
 
   const addEntry = async (entry: Omit<FinanceEntry, "id" | "status">) => {
     if (!user.id) throw new Error("User not authenticated");
 
-    const db = entryToDB(entry.type);
-
     if (
-      (db.status === "pending_in" || db.status === "pending_out") &&
+      (entry.type === EntryType.PendingIn ||
+        entry.type === EntryType.PendingOut) &&
       !entry.dueDate
     ) {
-      throw new Error("Due date is required for pending entries");
+      throw new Error("Due date required for pending entries");
     }
+
+    const db = entryToDB(entry.type);
 
     const { error } = await supabase.from("entries").insert({
       user_id: user.id,
@@ -261,7 +262,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
     });
 
     if (error) {
-      console.error("Supabase insert error:", error);
+      console.error("Insert error:", error);
       throw error;
     }
 
@@ -269,14 +270,17 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const updateEntry = async (entry: FinanceEntry) => {
-    const db = entryToDB(entry.type);
+    if (!user.id) throw new Error("User not authenticated");
 
     if (
-      (db.status === "pending_in" || db.status === "pending_out") &&
+      (entry.type === EntryType.PendingIn ||
+        entry.type === EntryType.PendingOut) &&
       !entry.dueDate
     ) {
-      throw new Error("Due date is required for pending entries");
+      throw new Error("Due date required for pending entries");
     }
+
+    const db = entryToDB(entry.type);
 
     const { error } = await supabase
       .from("entries")
@@ -284,7 +288,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
         name: entry.name,
         amount: entry.amount,
         date: entry.date,
-        description: entry.description,
+        description: entry.description || null,
         payment_mode: entry.paymentMode,
         client_email: entry.clientEmail || null,
         due_date: entry.dueDate || null,
@@ -294,7 +298,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
       .eq("id", entry.id);
 
     if (error) {
-      console.error("Supabase update error:", error);
+      console.error("Update error:", error);
       throw error;
     }
 
@@ -318,7 +322,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
     await updateEntry({ ...entry, type: newType });
   };
 
-  /* ---------------- CONTEXT VALUE ---------------- */
+  /* ================= CONTEXT VALUE ================= */
 
   const value = useMemo(
     () => ({
@@ -335,8 +339,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
       deleteEntry,
       getEntry: (id: string) => entries.find((e) => e.id === id),
       markAsCompleted,
-      markAllNotificationsRead: async () => {},
-      upgradeToPro: () => {},
       deleteAccount: async () => {
         await supabase.auth.signOut();
       },
@@ -351,7 +353,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 };
 
-/* ---------------- HOOK ---------------- */
+/* ================= HOOK ================= */
 
 export const useFinance = () => {
   const ctx = useContext(FinanceContext);
