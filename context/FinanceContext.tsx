@@ -52,6 +52,36 @@ interface FinanceContextType {
 
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
 
+/* ================= ENTRY TYPE MAPPING ================= */
+
+const entryToDB = (type: EntryType) => {
+  switch (type) {
+    case EntryType.Received:
+      return { type: "income", status: "completed" };
+    case EntryType.Sent:
+      return { type: "expense", status: "completed" };
+    case EntryType.PendingIn:
+      return { type: "income", status: "pending" };
+    case EntryType.PendingOut:
+      return { type: "expense", status: "pending" };
+    default:
+      throw new Error("Invalid EntryType");
+  }
+};
+
+const dbToEntryType = (
+  dbType: "income" | "expense",
+  status: "pending" | "completed"
+): EntryType => {
+  if (dbType === "income" && status === "completed")
+    return EntryType.Received;
+  if (dbType === "expense" && status === "completed")
+    return EntryType.Sent;
+  if (dbType === "income" && status === "pending")
+    return EntryType.PendingIn;
+  return EntryType.PendingOut;
+};
+
 /* ================= PROVIDER ================= */
 
 export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
@@ -63,29 +93,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
   const [notifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
 
-  /* ---------------- HELPERS ---------------- */
-
-  const mapTypeToDB = (type: EntryType): "income" | "expense" =>
-    type === EntryType.Received || type === EntryType.PendingIn
-      ? "income"
-      : "expense";
-
-  const mapTypeFromDB = (
-    dbType: "income" | "expense",
-    status: "pending" | "completed"
-  ): EntryType => {
-    if (dbType === "income") {
-      return status === "pending"
-        ? EntryType.PendingIn
-        : EntryType.Received;
-    }
-    return status === "pending"
-      ? EntryType.PendingOut
-      : EntryType.Sent;
-  };
+  /* ---------------- MAP DB ENTRY ---------------- */
 
   const mapEntryFromDB = (db: any): FinanceEntry => {
-    const type = mapTypeFromDB(db.type, db.status);
+    const type = dbToEntryType(db.type, db.status);
+
     return {
       id: db.id,
       name: db.name,
@@ -124,55 +136,60 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
       setUser((prev) => ({
         ...prev,
         id: userId,
-        name: p.name ?? prev.name,
-        avatar: p.avatar ?? prev.avatar,
-        plan: p.plan ?? prev.plan,
-        billingCycle: p.billing_cycle ?? prev.billingCycle,
-        receivingAccounts: p.receiving_accounts ?? [],
-        paymentMethods: p.payment_methods ?? [],
-        email: prev.email,
+        name: p.name || prev.name,
+        avatar: p.avatar || prev.avatar,
+        plan: p.plan || prev.plan,
+        billingCycle: p.billing_cycle || prev.billingCycle,
+        receivingAccounts: p.receiving_accounts || [],
+        paymentMethods: p.payment_methods || [],
       }));
       if (p.currency) setCurrencyState(p.currency);
     }
   }, []);
 
-  /* ---------------- AUTH ---------------- */
+  /* ---------------- AUTH BOOTSTRAP ---------------- */
 
   useEffect(() => {
     let mounted = true;
 
-    const init = async () => {
-      const { data } = await supabase.auth.getSession();
-      const session = data.session;
+    const bootstrap = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
       if (!mounted) return;
 
       if (session?.user) {
-        setUser((u) => ({
-          ...u,
+        setUser((prev) => ({
+          ...prev,
           id: session.user.id,
           email: session.user.email || "",
         }));
         await fetchData(session.user.id);
+      } else {
+        setUser(EMPTY_USER);
+        setEntries([]);
       }
 
       setLoading(false);
     };
 
-    init();
+    bootstrap();
 
     const { data: sub } = supabase.auth.onAuthStateChange(
-      async (_, session) => {
+      async (event, session) => {
         if (!mounted) return;
 
-        if (session?.user) {
-          setUser((u) => ({
-            ...u,
+        if (event === "SIGNED_IN" && session?.user) {
+          setUser((prev) => ({
+            ...prev,
             id: session.user.id,
             email: session.user.email || "",
           }));
           fetchData(session.user.id);
-        } else {
+        }
+
+        if (event === "SIGNED_OUT") {
           setUser(EMPTY_USER);
           setEntries([]);
         }
@@ -185,10 +202,40 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [fetchData]);
 
-  /* ---------------- ENTRIES ---------------- */
+  /* ---------------- PREFERENCES ---------------- */
+
+  const setCurrency = async (code: CurrencyCode) => {
+    setCurrencyState(code);
+    if (user.id) {
+      await supabase.from("profiles").upsert({ id: user.id, currency: code });
+    }
+  };
+
+  const updateUser = async (updates: Partial<User>) => {
+    if (!user.id) return;
+
+    setUser((prev) => ({ ...prev, ...updates }));
+
+    await supabase.from("profiles").upsert({
+      id: user.id,
+      name: updates.name,
+      avatar: updates.avatar,
+      receiving_accounts: updates.receivingAccounts,
+      payment_methods: updates.paymentMethods,
+      plan: updates.plan,
+      billing_cycle: updates.billingCycle,
+    });
+  };
+
+  const formatAmount = (amount: number) =>
+    `${CURRENCIES[currency].symbol}${amount.toFixed(2)}`;
+
+  /* ---------------- ENTRY ACTIONS ---------------- */
 
   const addEntry = async (entry: Omit<FinanceEntry, "id">) => {
     if (!user.id) throw new Error("Not authenticated");
+
+    const db = entryToDB(entry.type);
 
     const { error } = await supabase.from("entries").insert({
       user_id: user.id,
@@ -199,20 +246,17 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
       payment_mode: entry.paymentMode,
       client_email: entry.clientEmail,
       due_date: entry.dueDate,
-      type: mapTypeToDB(entry.type),
-      status:
-        entry.type === EntryType.PendingIn ||
-        entry.type === EntryType.PendingOut
-          ? "pending"
-          : "completed",
+      type: db.type,
+      status: db.status,
     });
 
     if (error) throw error;
-
     await fetchData(user.id);
   };
 
   const updateEntry = async (entry: FinanceEntry) => {
+    const db = entryToDB(entry.type);
+
     const { error } = await supabase
       .from("entries")
       .update({
@@ -223,12 +267,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
         payment_mode: entry.paymentMode,
         client_email: entry.clientEmail,
         due_date: entry.dueDate,
-        type: mapTypeToDB(entry.type),
-        status:
-          entry.type === EntryType.PendingIn ||
-          entry.type === EntryType.PendingOut
-            ? "pending"
-            : "completed",
+        type: db.type,
+        status: db.status,
       })
       .eq("id", entry.id);
 
@@ -242,43 +282,18 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const markAsCompleted = async (id: string) => {
-    await supabase.from("entries").update({ status: "completed" }).eq("id", id);
-    await fetchData(user.id);
+    const entry = entries.find((e) => e.id === id);
+    if (!entry) return;
+
+    const newType =
+      entry.type === EntryType.PendingIn
+        ? EntryType.Received
+        : EntryType.Sent;
+
+    await updateEntry({ ...entry, type: newType });
   };
 
-  /* ---------------- PROFILE ---------------- */
-
-  const updateUser = async (updates: Partial<User>) => {
-    if (!user.id) return;
-
-    const payload: any = {};
-    if (updates.name !== undefined) payload.name = updates.name;
-    if (updates.avatar !== undefined) payload.avatar = updates.avatar;
-    if (updates.receivingAccounts !== undefined)
-      payload.receiving_accounts = updates.receivingAccounts;
-    if (updates.paymentMethods !== undefined)
-      payload.payment_methods = updates.paymentMethods;
-
-    const { error } = await supabase
-      .from("profiles")
-      .upsert({ id: user.id, ...payload });
-
-    if (error) throw error;
-
-    setUser((prev) => ({ ...prev, ...updates }));
-  };
-
-  const setCurrency = async (code: CurrencyCode) => {
-    setCurrencyState(code);
-    if (user.id) {
-      await supabase.from("profiles").upsert({ id: user.id, currency: code });
-    }
-  };
-
-  const formatAmount = (amount: number) =>
-    `${CURRENCIES[currency].symbol}${amount.toFixed(2)}`;
-
-  /* ---------------- CONTEXT ---------------- */
+  /* ---------------- CONTEXT VALUE ---------------- */
 
   const value = useMemo(
     () => ({
