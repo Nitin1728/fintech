@@ -6,6 +6,7 @@ import {
   Navigate,
   Outlet,
 } from "react-router-dom";
+import { Analytics } from "@vercel/analytics/react";
 
 import { AppLayout } from "./components/Layout";
 import { PublicLayout } from "./components/PublicLayout";
@@ -150,6 +151,7 @@ export default function App() {
   return (
     <FinanceProvider>
       <AppContent />
+      <Analytics />
     </FinanceProvider>
   );
 }
