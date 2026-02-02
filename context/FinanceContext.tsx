@@ -52,34 +52,39 @@ interface FinanceContextType {
 
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
 
-/* ================= ENTRY TYPE MAPPING ================= */
+/* ================= 🔑 ENTRY TYPE NORMALIZATION ================= */
+/* THIS IS THE CORE FIX */
 
-const entryToDB = (type: EntryType) => {
-  switch (type) {
-    case EntryType.Received:
-      return { type: "income", status: "completed" };
-    case EntryType.Sent:
-      return { type: "expense", status: "completed" };
-    case EntryType.PendingIn:
-      return { type: "income", status: "pending" };
-    case EntryType.PendingOut:
-      return { type: "expense", status: "pending" };
-    default:
-      throw new Error("Invalid EntryType");
+const entryToDB = (rawType: EntryType) => {
+  const type = rawType.toLowerCase();
+
+  if (type.includes("pending") && type.includes("in")) {
+    return { type: "income", status: "pending" };
   }
+
+  if (type.includes("pending") && type.includes("out")) {
+    return { type: "expense", status: "pending" };
+  }
+
+  if (type === "received") {
+    return { type: "income", status: "completed" };
+  }
+
+  if (type === "sent") {
+    return { type: "expense", status: "completed" };
+  }
+
+  throw new Error("Invalid entry type");
 };
 
 const dbToEntryType = (
   dbType: "income" | "expense",
   status: "pending" | "completed"
 ): EntryType => {
-  if (dbType === "income" && status === "completed")
-    return EntryType.Received;
-  if (dbType === "expense" && status === "completed")
-    return EntryType.Sent;
-  if (dbType === "income" && status === "pending")
-    return EntryType.PendingIn;
-  return EntryType.PendingOut;
+  if (dbType === "income" && status === "pending") return EntryType.PendingIn;
+  if (dbType === "expense" && status === "pending") return EntryType.PendingOut;
+  if (dbType === "income") return EntryType.Received;
+  return EntryType.Sent;
 };
 
 /* ================= PROVIDER ================= */
@@ -115,7 +120,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   };
 
-  /* ---------------- DATA LOAD ---------------- */
+  /* ---------------- FETCH DATA ---------------- */
 
   const fetchData = useCallback(async (userId: string) => {
     const [entriesRes, profileRes] = await Promise.all([
@@ -202,7 +207,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [fetchData]);
 
-  /* ---------------- PREFERENCES ---------------- */
+  /* ---------------- USER PREFS ---------------- */
 
   const setCurrency = async (code: CurrencyCode) => {
     setCurrencyState(code);

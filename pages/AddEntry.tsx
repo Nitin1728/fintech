@@ -47,7 +47,6 @@ const AddEntry: React.FC = () => {
                 paymentMode: formData.paymentMode,
                 description: formData.description,
                 type: type,
-                status: isPending ? 'pending' : 'completed',
                 clientEmail: type === EntryType.PendingIn ? formData.clientEmail : undefined,
                 dueDate: isPending ? formData.dueDate : undefined
             });
