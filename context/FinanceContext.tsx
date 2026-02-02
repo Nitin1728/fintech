@@ -39,7 +39,6 @@ interface FinanceContextType {
   notifications: AppNotification[];
   setCurrency: (code: CurrencyCode) => Promise<void>;
   updateUser: (updates: Partial<User>) => Promise<void>;
-  upgradeToPro: () => Promise<void>;
   formatAmount: (amount: number) => string;
   addEntry: (entry: Omit<FinanceEntry, "id" | "status">) => Promise<void>;
   updateEntry: (entry: FinanceEntry) => Promise<void>;
@@ -52,7 +51,7 @@ interface FinanceContextType {
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
 
 /* =====================================================
-   🔑 SINGLE SOURCE OF TRUTH (UI ↔ DB)
+   🔑 SINGLE SOURCE OF TRUTH (DB ↔ UI MAPPING)
 ===================================================== */
 
 const entryToDB = (entryType: EntryType) => {
@@ -232,26 +231,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
     });
   };
 
-  /* ---------------- PRO UPGRADE ---------------- */
-
-  const upgradeToPro = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session?.user) throw new Error("Not authenticated");
-
-    await supabase
-      .from("profiles")
-      .update({
-        plan: "Pro",
-        plan_started_at: new Date().toISOString(),
-      })
-      .eq("id", session.user.id);
-
-    setUser((prev) => ({ ...prev, plan: "Pro" }));
-  };
-
   const formatAmount = (amount: number) =>
     `${CURRENCIES[currency].symbol}${amount.toFixed(2)}`;
 
@@ -283,7 +262,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
       status,
     });
 
-    if (error) throw error;
+    if (error) {
+      console.error("INSERT ERROR:", error);
+      throw error;
+    }
 
     await fetchData(session.user.id);
   };
@@ -316,7 +298,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
       })
       .eq("id", entry.id);
 
-    if (error) throw error;
+    if (error) {
+      console.error("UPDATE ERROR:", error);
+      throw error;
+    }
 
     await fetchData(session.user.id);
   };
@@ -349,7 +334,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({
       notifications,
       setCurrency,
       updateUser,
-      upgradeToPro,
       formatAmount,
       addEntry,
       updateEntry,
